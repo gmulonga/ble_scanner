@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../blocs/ble_scan_bloc/ble_scan_bloc.dart';
+import '../blocs/ble_scan_bloc/ble_scan_state.dart';
 import '../models/ble_device_model.dart';
 
 class DeviceDetailScreen extends StatelessWidget {
@@ -338,20 +341,38 @@ class DeviceDetailScreen extends StatelessWidget {
             _buildCard(
               child: Column(
                 children: [
-                  _buildActionButton(
-                    icon: Icons.link,
-                    label: 'Connect to Device',
-                    color: Colors.blue,
-                    onPressed: () {
-                      // Handle connect
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Connection feature coming soon'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
+                  BlocBuilder<BleScanBloc, BleScanState>(
+                    builder: (context, state) {
+                      final isConnected = state.connectedDevices[device.id] ?? false;
+                      return _buildActionButton(
+                        icon: isConnected ? Icons.link_off : Icons.link,
+                        label: isConnected ? 'Disconnect' : 'Connect',
+                        color: isConnected ? Colors.red : Colors.blue,
+                        onPressed: () {
+                          if (isConnected) {
+                            context.read<BleScanBloc>().disconnectDevice(device.id);
+                          } else {
+                            context.read<BleScanBloc>().connectDevice(device.id);
+                          }
+                        },
                       );
                     },
                   ),
+
+                  // _buildActionButton(
+                  //   icon: Icons.link,
+                  //   label: 'Connect to Device',
+                  //   color: Colors.blue,
+                  //   onPressed: () {
+                  //     // Handle connect
+                  //     ScaffoldMessenger.of(context).showSnackBar(
+                  //       const SnackBar(
+                  //         content: Text('Connection feature coming soon'),
+                  //         behavior: SnackBarBehavior.floating,
+                  //       ),
+                  //     );
+                  //   },
+                  // ),
                   const SizedBox(height: 12),
                   _buildActionButton(
                     icon: Icons.refresh,

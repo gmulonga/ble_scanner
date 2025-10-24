@@ -178,6 +178,46 @@ class BleScanBloc extends Cubit<BleScanState> {
     }
   }
 
+  Future<void> connectDevice(String deviceId) async {
+    try {
+      await _bleRepository.connectToDevice(deviceId);
+
+      final updatedConnections = Map<String, bool>.from(state.connectedDevices);
+      updatedConnections[deviceId] = true;
+
+      if (!isClosed) {
+        emit(state.copyWith(connectedDevices: updatedConnections));
+      }
+    } catch (e) {
+      if (!isClosed) {
+        emit(state.copyWith(
+          status: BleScanStatus.error,
+          errorMessage: 'Failed to connect: $e',
+        ));
+      }
+    }
+  }
+
+  Future<void> disconnectDevice(String deviceId) async {
+    try {
+      await _bleRepository.disconnectFromDevice(deviceId);
+
+      final updatedConnections = Map<String, bool>.from(state.connectedDevices);
+      updatedConnections[deviceId] = false;
+
+      if (!isClosed) {
+        emit(state.copyWith(connectedDevices: updatedConnections));
+      }
+    } catch (e) {
+      if (!isClosed) {
+        emit(state.copyWith(
+          status: BleScanStatus.error,
+          errorMessage: 'Failed to disconnect: $e',
+        ));
+      }
+    }
+  }
+
   Future<void> requestPermissions() async {
     final granted = await PermissionHelper.requestBluetoothPermissions();
 
