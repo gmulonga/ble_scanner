@@ -35,6 +35,22 @@ It allows users to:
 
 ---
 
+## 🧩 State Management Choice — Why BLoC?
+
+This project uses BLoC (Business Logic Component) for state management because it provides a structured, testable, and scalable way to separate UI from business logic.
+
+💡 Why BLoC?
+
+ - Separation of concerns: BLoC enforces a clear separation between presentation (UI) and logic (events and state), making the app easier to maintain and extend.
+
+ - Predictable state flow: Data flows in one direction — events trigger state changes, and states update the UI. This makes debugging and reasoning about the app behavior much easier.
+
+ - Reusability: Business logic components can be reused across different widgets and screens without UI dependencies.
+
+ - Testability: Because logic is isolated from widgets, writing unit and widget tests becomes straightforward.
+
+ - Scalability: As the app grows, BLoC’s structure ensures that complex features remain organized and consistent.
+
 ## ⚙️ Setup Instructions
 
 ### 1️⃣ Prerequisites
