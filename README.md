@@ -23,14 +23,15 @@ It allows users to:
 
 ## 🛠️ Tech Stack
 
-| Component | Description |
-|------------|-------------|
-| **Flutter** | 3.32.2 (Stable) |
-| **Dart** | 3.8.1 |
+| Component            | Description |
+|----------------------|------------|
+| **Flutter**          | 3.32.2 (Stable) |
+| **Dart**             | 3.8.1 |
 | **State Management** | flutter_bloc |
-| **Bluetooth** | flutter_blue_plus |
-| **Permissions** | permission_handler |
-| **UI Toolkit** | Material Design |
+| **Bluetooth**        | flutter_blue_plus |
+| **Permissions**      | permission_handler |
+| **UI Toolkit**       | Material Design |
+| **Location**         | geolocator |
 
 ---
 
