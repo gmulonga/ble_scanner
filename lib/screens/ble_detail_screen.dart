@@ -1,17 +1,68 @@
+import 'dart:async';
+
+import 'package:ble_scanner/utils/constants.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../blocs/ble_scan_bloc/ble_scan_bloc.dart';
 import '../blocs/ble_scan_bloc/ble_scan_state.dart';
 import '../models/ble_device_model.dart';
+import '../widgets/custom_snackbar.dart';
 
-class DeviceDetailScreen extends StatelessWidget {
+class DeviceDetailScreen extends StatefulWidget {
   final BleDevice device;
 
-  const DeviceDetailScreen({
-    super.key,
-    required this.device,
-  });
+  const DeviceDetailScreen({super.key, required this.device});
+
+  @override
+  State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
+}
+
+class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
+  bool _isConnecting = false;
+  bool _isLoadingServices = false;
+  List<String> _services = [];
+  BluetoothConnectionState? _connectionState;
+  String? _lastSnackMessage;
+
+  StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
+
+
+  void _startConnectionListener() {
+    final repo = context.read<BleScanBloc>().repository;
+    final stream = repo.getConnectionStateStream(widget.device.id);
+    if (stream == null) return;
+
+    _connectionSubscription?.cancel();
+    _connectionSubscription = stream.listen((state) {
+      if (!mounted) return;
+
+      setState(() => _connectionState = state);
+
+      void showOnce(String msg, Color color) {
+        if (_lastSnackMessage != msg) {
+          _lastSnackMessage = msg;
+          CustomSnackBar.show(context, msg, color);
+        }
+      }
+
+      switch (state) {
+        case BluetoothConnectionState.connected:
+          showOnce('Device connected', Colors.green);
+          break;
+        case BluetoothConnectionState.connecting:
+          showOnce('Connecting...', Colors.blue);
+          break;
+        case BluetoothConnectionState.disconnecting:
+          showOnce('Disconnecting...', Colors.orange);
+          break;
+        case BluetoothConnectionState.disconnected:
+          showOnce('Device disconnected', Colors.red);
+          break;
+      }
+    });
+  }
 
   Color _getSignalColor(int rssi) {
     if (rssi >= -60) return Colors.green;
@@ -27,31 +78,42 @@ class DeviceDetailScreen extends StatelessWidget {
   }
 
   double _getSignalPercentage(int rssi) {
-    // Convert RSSI to percentage (typical range: -100 to -30)
     final percentage = ((rssi + 100) / 70 * 100).clamp(0.0, 100.0);
     return percentage;
   }
 
   void _copyToClipboard(BuildContext context, String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$label copied to clipboard'),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    );
+    CustomSnackBar.show(context, 'copied to clipboard', kPrimary);
+
+  }
+
+  Future<void> _discoverServices(BuildContext context) async {
+    setState(() {
+      _isLoadingServices = true;
+      _services.clear();
+    });
+    try {
+      final repo = context.read<BleScanBloc>().repository;
+      final services = await repo.discoverServices(widget.device.id);
+      setState(() {
+        _services = services.map((s) => s.uuid.toString()).toList();
+      });
+    } catch (e) {
+      CustomSnackBar.show(context, 'Failed to load services: $e', kRed);
+    } finally {
+      setState(() => _isLoadingServices = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _connectionSubscription?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final signalColor = _getSignalColor(device.rssi);
-    final signalStrength = _getSignalStrength(device.rssi);
-    final signalPercentage = _getSignalPercentage(device.rssi);
-
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
@@ -69,332 +131,305 @@ class DeviceDetailScreen extends StatelessWidget {
             fontSize: 20,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert, color: Colors.black87),
-            onPressed: () {
-              // Show more options
-            },
+      ),
+      body: BlocConsumer<BleScanBloc, BleScanState>(
+        listener: (context, state) {
+          if (state.status == BleScanStatus.error) {
+            CustomSnackBar.show(context, 'Unknown Error', kRed);
+          }
+        },
+        builder: (context, state) {
+          // ✅ Access the device info dynamically from the BLoC state
+          final updatedDevice = state.devices.firstWhere(
+                (d) => d.id == widget.device.id,
+            orElse: () => widget.device,
+          );
+
+          final signalColor = _getSignalColor(updatedDevice.rssi);
+          final signalStrength = _getSignalStrength(updatedDevice.rssi);
+          final signalPercentage = _getSignalPercentage(updatedDevice.rssi);
+          final isConnected = state.connectedDevices[widget.device.id] ?? false;
+
+          return SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildHeader(signalColor),
+                const SizedBox(height: 16),
+                _buildSignalCard(signalColor, signalStrength, signalPercentage, updatedDevice),
+                _buildInfoCard(context, updatedDevice),
+                _buildActions(context, isConnected),
+                if (isConnected) _buildServiceList(context),
+                const SizedBox(height: 24),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildHeader(Color signalColor) {
+    final state = _connectionState ?? BluetoothConnectionState.disconnected;
+    String statusText;
+    Color statusColor;
+
+    switch (state) {
+      case BluetoothConnectionState.connected:
+        statusText = 'Connected';
+        statusColor = Colors.green;
+        break;
+      case BluetoothConnectionState.connecting:
+        statusText = 'Connecting';
+        statusColor = Colors.blue;
+        break;
+      case BluetoothConnectionState.disconnecting:
+        statusText = 'Disconnecting';
+        statusColor = Colors.orange;
+        break;
+      default:
+        statusText = 'Disconnected';
+        statusColor = Colors.red;
+    }
+
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue[600]!, Colors.blue[400]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.bluetooth, color: Colors.white, size: 50),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            widget.device.displayName,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.circle, color: statusColor, size: 8),
+                const SizedBox(width: 6),
+                Text(
+                  statusText,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Header Card with Device Icon and Name
+    );
+  }
+
+
+  Widget _buildSignalCard(Color signalColor, String signalStrength, double signalPercentage, BleDevice updatedDevice) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Text('Signal Strength',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             Container(
-              width: double.infinity,
-              color: Colors.white,
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                children: [
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.blue[600]!,
-                          Colors.blue[400]!,
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blue.withOpacity(0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.bluetooth,
-                      color: Colors.white,
-                      size: 50,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    device.displayName,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Text(
-                          'Discovered',
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: signalColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                signalStrength,
+                style: TextStyle(
+                  color: signalColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: signalColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.signal_cellular_alt, color: signalColor),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Text('${updatedDevice.rssi} dBm',
                           style: TextStyle(
-                            color: Colors.green,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // Signal Strength Card
-            _buildCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Signal Strength',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: signalColor)),
+                      Text('${signalPercentage.toStringAsFixed(0)}%',
+                          style: TextStyle(fontSize: 16, color: Colors.grey[600])),
+                    ]),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: signalPercentage / 100,
+                        backgroundColor: Colors.grey[200],
+                        color: signalColor,
+                        minHeight: 8,
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: signalColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          signalStrength,
-                          style: TextStyle(
-                            color: signalColor,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: signalColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          Icons.signal_cellular_alt,
-                          color: signalColor,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '${device.rssi} dBm',
-                                  style: TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.bold,
-                                    color: signalColor,
-                                  ),
-                                ),
-                                Text(
-                                  '${signalPercentage.toStringAsFixed(0)}%',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: LinearProgressIndicator(
-                                value: signalPercentage / 100,
-                                backgroundColor: Colors.grey[200],
-                                color: signalColor,
-                                minHeight: 8,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: Colors.grey[600],
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'RSSI measures signal strength. Values closer to 0 indicate stronger signals.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(BuildContext context, BleDevice updatedDevice) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Device Information',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 16),
+          _buildInfoRow(context,
+              icon: Icons.badge_outlined,
+              label: 'Device Name',
+              value: updatedDevice.displayName,
+              onCopy: () => _copyToClipboard(context, updatedDevice.displayName, 'Device name')),
+          const Divider(height: 24),
+          _buildInfoRow(context,
+              icon: Icons.fingerprint,
+              label: 'Device ID',
+              value: updatedDevice.id,
+              isMonospace: true,
+              onCopy: () => _copyToClipboard(context, updatedDevice.id, 'Device ID')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context, bool isConnected) {
+    return _buildCard(
+      child: Column(
+        children: [
+          _buildActionButton(
+            icon: isConnected ? Icons.link_off : Icons.link,
+            label: _isConnecting
+                ? 'Connecting...'
+                : (isConnected ? 'Disconnect' : 'Connect'),
+            color: isConnected ? kRed : kPrimary,
+            onPressed: _isConnecting
+                ? null
+                : () async {
+              setState(() => _isConnecting = true);
+              final bloc = context.read<BleScanBloc>();
+
+              try {
+                if (isConnected) {
+                  await bloc.disconnectDevice(widget.device.id);
+                  CustomSnackBar.show(context, 'Disconnected', kPrimary);
+                } else {
+                  await bloc.connectDevice(widget.device.id);
+                  _startConnectionListener();
+                  await _discoverServices(context);
+                }
+              } catch (e) {
+                CustomSnackBar.show(context, 'Connection error: $e', kRed);
+              } finally {
+                setState(() => _isConnecting = false);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
+          if (isConnected)
+            _buildActionButton(
+              icon: Icons.refresh,
+              label: 'Refresh Signal',
+              color: Colors.green,
+              onPressed: () async {
+                try {
+                  final bloc = context.read<BleScanBloc>();
+                  await bloc.refreshRssi(widget.device.id);
+                  CustomSnackBar.show(
+                      context, 'Signal refreshed successfully', kPrimary);
+                } catch (e) {
+                  CustomSnackBar.show(
+                      context, 'Failed to refresh signal: $e', kRed);
+                }
+              },
             ),
+        ],
+      ),
+    );
+  }
 
-            // Device Information Card
-            _buildCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Device Information',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildInfoRow(
-                    context,
-                    icon: Icons.badge_outlined,
-                    label: 'Device Name',
-                    value: device.displayName,
-                    onCopy: () => _copyToClipboard(
-                      context,
-                      device.displayName,
-                      'Device name',
-                    ),
-                  ),
-                  const Divider(height: 24),
-                  _buildInfoRow(
-                    context,
-                    icon: Icons.fingerprint,
-                    label: 'Device ID',
-                    value: device.id,
-                    isMonospace: true,
-                    onCopy: () => _copyToClipboard(
-                      context,
-                      device.id,
-                      'Device ID',
-                    ),
-                  ),
-                  const Divider(height: 24),
-                  _buildInfoRow(
-                    context,
-                    icon: Icons.category_outlined,
-                    label: 'Device Type',
-                    value: 'Bluetooth Low Energy',
-                  ),
-                ],
-              ),
+  Widget _buildServiceList(BuildContext context) {
+    return _buildCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Discovered Services',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          if (_isLoadingServices)
+            const Center(child: CircularProgressIndicator(color: kPrimary,))
+          else if (_services.isEmpty)
+            const Text('No services found.')
+          else
+            Column(
+              children: _services
+                  .map((s) => ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                title: Text(s, style: const TextStyle(fontSize: 14)),
+              ))
+                  .toList(),
             ),
-
-            // Action Buttons
-            _buildCard(
-              child: Column(
-                children: [
-                  BlocBuilder<BleScanBloc, BleScanState>(
-                    builder: (context, state) {
-                      final isConnected = state.connectedDevices[device.id] ?? false;
-                      return _buildActionButton(
-                        icon: isConnected ? Icons.link_off : Icons.link,
-                        label: isConnected ? 'Disconnect' : 'Connect',
-                        color: isConnected ? Colors.red : Colors.blue,
-                        onPressed: () {
-                          if (isConnected) {
-                            context.read<BleScanBloc>().disconnectDevice(device.id);
-                          } else {
-                            context.read<BleScanBloc>().connectDevice(device.id);
-                          }
-                        },
-                      );
-                    },
-                  ),
-
-                  // _buildActionButton(
-                  //   icon: Icons.link,
-                  //   label: 'Connect to Device',
-                  //   color: Colors.blue,
-                  //   onPressed: () {
-                  //     // Handle connect
-                  //     ScaffoldMessenger.of(context).showSnackBar(
-                  //       const SnackBar(
-                  //         content: Text('Connection feature coming soon'),
-                  //         behavior: SnackBarBehavior.floating,
-                  //       ),
-                  //     );
-                  //   },
-                  // ),
-                  const SizedBox(height: 12),
-                  _buildActionButton(
-                    icon: Icons.refresh,
-                    label: 'Refresh Signal',
-                    color: Colors.green,
-                    onPressed: () {
-                      // Handle refresh
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Refreshing signal strength...'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -418,14 +453,12 @@ class DeviceDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoRow(
-      BuildContext context, {
-        required IconData icon,
+  Widget _buildInfoRow(BuildContext context,
+      {required IconData icon,
         required String label,
         required String value,
         bool isMonospace = false,
-        VoidCallback? onCopy,
-      }) {
+        VoidCallback? onCopy}) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -443,24 +476,19 @@ class DeviceDetailScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      fontWeight: FontWeight.w500)),
               const SizedBox(height: 4),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w500,
-                  fontFamily: isMonospace ? 'monospace' : null,
-                ),
-              ),
+              Text(value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: isMonospace ? 'monospace' : null,
+                  )),
             ],
           ),
         ),
@@ -468,8 +496,6 @@ class DeviceDetailScreen extends StatelessWidget {
           IconButton(
             icon: Icon(Icons.copy, size: 18, color: Colors.grey[600]),
             onPressed: onCopy,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
           ),
       ],
     );
@@ -479,7 +505,7 @@ class DeviceDetailScreen extends StatelessWidget {
     required IconData icon,
     required String label,
     required Color color,
-    required VoidCallback onPressed,
+    required VoidCallback? onPressed,
   }) {
     return SizedBox(
       width: double.infinity,
@@ -499,13 +525,7 @@ class DeviceDetailScreen extends StatelessWidget {
           children: [
             Icon(icon, size: 20),
             const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
