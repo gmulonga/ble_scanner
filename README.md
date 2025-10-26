@@ -51,6 +51,8 @@ This project uses BLoC (Business Logic Component) for state management because i
 
  - Scalability: As the app grows, BLoC’s structure ensures that complex features remain organized and consistent.
 
+--- 
+
 ## ⚙️ Setup Instructions
 
 ### 1️⃣ Prerequisites
