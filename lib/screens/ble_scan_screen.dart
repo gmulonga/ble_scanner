@@ -1,8 +1,11 @@
 import 'package:ble_scanner/models/ble_device_model.dart';
+import 'package:ble_scanner/utils/permission_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart';
 import '../blocs/ble_scan_bloc/ble_scan_bloc.dart';
 import '../blocs/ble_scan_bloc/ble_scan_state.dart';
+import '../utils/constants.dart';
 import '../widgets/device_list_tile.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
@@ -13,113 +16,161 @@ class BleScanScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        elevation: 0,
-        backgroundColor: Colors.white,
-        title: const Text(
-          'BLE Scanner',
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
+    return BlocBuilder<BleScanBloc, BleScanState>(
+      builder: (context, state) {
+        final isScanning = state.status == BleScanStatus.scanning;
+
+        return Scaffold(
+          backgroundColor: Colors.grey[50],
+          appBar: AppBar(
+            elevation: 0,
+            backgroundColor: kWhite,
+            centerTitle: true,
+            title: const Text(
+              'BLE Scanner',
+              style: TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+                fontSize: 20,
+              ),
+            ),
           ),
-        ),
-        actions: [
-          BlocBuilder<BleScanBloc, BleScanState>(
-            builder: (context, state) {
-              final isScanning = state.status == BleScanStatus.scanning;
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: isScanning
-                        ? () => context.read<BleScanBloc>().stopScan()
-                        : () => context.read<BleScanBloc>().startScan(),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isScanning
-                            ? Colors.red.withOpacity(0.1)
-                            : Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            isScanning ? Icons.stop_circle : Icons.radar,
-                            color: isScanning ? Colors.red[700] : Colors.blue[700],
-                            size: 20,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isScanning ? 'Stop' : 'Scan',
-                            style: TextStyle(
-                              color: isScanning ? Colors.red[700] : Colors.blue[700],
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+          body: _buildBody(context, state),
+          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: () => _handleScanToggle(context, isScanning),
+                icon: Icon(
+                  isScanning ? Icons.stop_circle : Icons.radar,
+                  color: kWhite,
+                ),
+                label: Text(
+                  isScanning ? 'Stop Scan' : 'Start Scan',
+                  style: const TextStyle(
+                    color: kWhite,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
                   ),
                 ),
-              );
-            },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                  isScanning ? kRed : kPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 4,
+                ),
+              ),
+            ),
           ),
-        ],
-      ),
-      body: BlocBuilder<BleScanBloc, BleScanState>(
-        builder: (context, state) {
-          return _buildBody(context, state);
-        },
-      ),
+        );
+      },
     );
+  }
+
+  Future<void> _handleScanToggle(BuildContext context, bool isScanning) async {
+    if (isScanning) {
+      context.read<BleScanBloc>().stopScan();
+      return;
+    }
+
+    final hasPermissions = await PermissionHelper.requestBluetoothPermissions();
+    if (!hasPermissions) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Bluetooth and Location permissions are required.'),
+          backgroundColor: kPrimary,
+        ),
+      );
+      return;
+    }
+
+    final isLocationEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!isLocationEnabled) {
+      final shouldOpenSettings = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Enable Location'),
+          content: const Text(
+            'Location services are required to scan for BLE devices.\nWould you like to enable them?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldOpenSettings == true) {
+        await Geolocator.openLocationSettings();
+      }
+      return;
+    }
+
+    context.read<BleScanBloc>().startScan();
   }
 
   Widget _buildBody(BuildContext context, BleScanState state) {
     final devices = state.devices;
 
-    // ✅ When scanning or already have devices — show the list
     if (state.status == BleScanStatus.scanning || devices.isNotEmpty) {
       if (devices.isEmpty) {
         return const AppLoader(message: 'Scanning for devices...');
       }
 
       return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
             child: Row(
               children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.devices, color: Colors.blue[700], size: 20),
+                ),
+                const SizedBox(width: 12),
                 Text(
-                  '${devices.length} ${devices.length == 1 ? 'Device' : 'Devices'} Found',
+                  '${devices.length} ${devices.length == 1 ? 'Device' : 'Devices'}',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey[800],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const Spacer(),
                 if (state.status == BleScanStatus.scanning)
                   SizedBox(
-                    width: 16,
-                    height: 16,
+                    width: 20,
+                    height: 20,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.blue[700]!,
-                      ),
+                      color: kPrimary,
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[700]!),
                     ),
                   ),
               ],
@@ -127,7 +178,7 @@ class BleScanScreen extends StatelessWidget {
           ),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.only(top: 10),
               itemCount: devices.length,
               itemBuilder: (context, index) {
                 final device = devices[index];
@@ -142,7 +193,6 @@ class BleScanScreen extends StatelessWidget {
       );
     }
 
-    // ✅ Bluetooth off
     if (state.status == BleScanStatus.bluetoothOff) {
       return EmptyState(
         message: 'Bluetooth is off\nPlease enable Bluetooth to continue',
@@ -150,7 +200,6 @@ class BleScanScreen extends StatelessWidget {
       );
     }
 
-    // ✅ Permission error
     if (state.status == BleScanStatus.permissionError) {
       return Center(
         child: Padding(
@@ -165,11 +214,7 @@ class BleScanScreen extends StatelessWidget {
                   color: Colors.orange.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  Icons.lock_outline,
-                  size: 40,
-                  color: Colors.orange[700],
-                ),
+                child: Icon(Icons.lock_outline, size: 40, color: Colors.orange[700]),
               ),
               const SizedBox(height: 24),
               Text(
@@ -184,33 +229,17 @@ class BleScanScreen extends StatelessWidget {
               Text(
                 'We need Bluetooth and location permissions to scan for nearby devices',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.grey[600],
-                  height: 1.5,
-                ),
+                style: TextStyle(fontSize: 15, color: Colors.grey[600], height: 1.5),
               ),
               const SizedBox(height: 32),
-              ElevatedButton(
+              FilledButton.icon(
                 onPressed: () => context.read<BleScanBloc>().requestPermissions(),
-                style: ElevatedButton.styleFrom(
+                icon: const Icon(Icons.lock_open),
+                label: const Text('Grant Permissions'),
+                style: FilledButton.styleFrom(
                   backgroundColor: Colors.blue[700],
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 32,
-                    vertical: 16,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'Grant Permissions',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ],
@@ -219,7 +248,6 @@ class BleScanScreen extends StatelessWidget {
       );
     }
 
-    // ✅ Error state
     if (state.status == BleScanStatus.error) {
       return EmptyState(
         message: state.errorMessage ?? 'An error occurred',
@@ -227,7 +255,6 @@ class BleScanScreen extends StatelessWidget {
       );
     }
 
-    // ✅ Default "ready" state when no devices found
     return const EmptyState(
       message: 'Ready to scan\nTap scan to discover devices',
       icon: Icons.bluetooth_searching,
@@ -237,9 +264,7 @@ class BleScanScreen extends StatelessWidget {
   void _onDeviceTap(BuildContext context, BleDevice device) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => DeviceDetailScreen(device: device),
-      ),
+      MaterialPageRoute(builder: (context) => DeviceDetailScreen(device: device)),
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:ble_scanner/utils/constants.dart';
 import 'package:flutter/material.dart';
 import '../models/ble_device_model.dart';
 
@@ -19,7 +20,7 @@ class DeviceListTile extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: kWhite,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -39,7 +40,7 @@ class DeviceListTile extends StatelessWidget {
                 color: Colors.blue.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.bluetooth, color: Colors.blue, size: 22),
+              child: const Icon(Icons.bluetooth, color: kPrimary, size: 22),
             ),
             const SizedBox(width: 12),
 

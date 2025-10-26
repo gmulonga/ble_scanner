@@ -1,3 +1,4 @@
+import 'package:ble_scanner/utils/constants.dart';
 import 'package:flutter/material.dart';
 
 class AppLoader extends StatelessWidget {
@@ -11,7 +12,9 @@ class AppLoader extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(),
+          const CircularProgressIndicator(
+            color: kPrimary,
+          ),
           const SizedBox(height: 16),
           Text(
             message,
