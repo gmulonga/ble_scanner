@@ -13,35 +13,65 @@ class DeviceListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      elevation: 1,
-      child: ListTile(
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.1),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.bluetooth, color: Colors.blue, size: 20),
-        ),
-        title: Text(
-          device.displayName,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('RSSI: ${device.rssi}'),
-            Text(
-              'ID: ${device.id.substring(0, 8)}...',
-              style: const TextStyle(fontSize: 12),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.15),
+              blurRadius: 6,
+              offset: const Offset(0, 3),
             ),
           ],
+          border: Border.all(color: Colors.grey.withOpacity(0.1)),
         ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-        onTap: onTap,
+        child: Row(
+          children: [
+            Container(
+              width: 45,
+              height: 45,
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.bluetooth, color: Colors.blue, size: 22),
+            ),
+            const SizedBox(width: 12),
+
+            // Device Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    device.displayName,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'RSSI: ${device.rssi}',
+                    style: const TextStyle(color: Colors.black54, fontSize: 13),
+                  ),
+                  Text(
+                    'ID: ${device.id.substring(0, 8)}...',
+                    style: const TextStyle(color: Colors.black38, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+
+            // Trailing icon
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
+        ),
       ),
     );
   }
