@@ -12,8 +12,16 @@ import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
 import 'ble_detail_screen.dart';
 
-class BleScanScreen extends StatelessWidget {
+class BleScanScreen extends StatefulWidget {
   const BleScanScreen({super.key});
+
+  @override
+  State<BleScanScreen> createState() => _BleScanScreenState();
+}
+
+class _BleScanScreenState extends State<BleScanScreen> {
+  String _searchText = '';
+  String _filterType = 'all';
 
   @override
   Widget build(BuildContext context) {
@@ -58,8 +66,7 @@ class BleScanScreen extends StatelessWidget {
                   ),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                  isScanning ? kRed : kPrimary,
+                  backgroundColor: isScanning ? kRed : kPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -120,6 +127,18 @@ class BleScanScreen extends StatelessWidget {
   Widget _buildBody(BuildContext context, BleScanState state) {
     final devices = state.devices;
 
+    // Filter devices based on search and type
+    final filteredDevices = devices.where((device) {
+      final matchesName = device.displayName.toLowerCase().contains(_searchText.toLowerCase());
+
+      if (_filterType == 'audio') {
+        return matchesName && device.serviceUuids.contains('0000110B-0000-1000-8000-00805f9b34fb');
+      } else if (_filterType == 'smartwatch') {
+        return matchesName && device.displayName.toLowerCase().contains('watch');
+      }
+      return matchesName;
+    }).toList();
+
     if (state.status == BleScanStatus.scanning || devices.isNotEmpty) {
       if (devices.isEmpty) {
         return const AppLoader(message: 'Scanning for devices...');
@@ -151,7 +170,7 @@ class BleScanScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  '${devices.length} ${devices.length == 1 ? 'Device' : 'Devices'}',
+                  '${filteredDevices.length} ${filteredDevices.length == 1 ? 'Device' : 'Devices'}',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -160,24 +179,73 @@ class BleScanScreen extends StatelessWidget {
                 ),
                 const Spacer(),
                 if (state.status == BleScanStatus.scanning)
-                  SizedBox(
+                  const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(
-                      color: kPrimary,
-                      strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[700]!),
-                    ),
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
                   ),
               ],
             ),
           ),
+
+          Padding(
+            padding: const EdgeInsets.only(top: 10, left: 15, right: 15),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Search by name...',
+                    prefixIcon: const Icon(Icons.search),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding:
+                    const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                  ),
+                  onChanged: (value) => setState(() => _searchText = value),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _filterType,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Devices')),
+                        DropdownMenuItem(value: 'audio', child: Text('Audio Devices')),
+                        DropdownMenuItem(
+                            value: 'smartwatch', child: Text('Smartwatches')),
+                      ],
+                      onChanged: (value) => setState(() => _filterType = value!),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 📱 Device List
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.only(top: 10),
-              itemCount: devices.length,
+              itemCount: filteredDevices.length,
               itemBuilder: (context, index) {
-                final device = devices[index];
+                final device = filteredDevices[index];
                 return DeviceListTile(
                   device: device,
                   onTap: () => _onDeviceTap(context, device),
@@ -190,7 +258,7 @@ class BleScanScreen extends StatelessWidget {
     }
 
     if (state.status == BleScanStatus.bluetoothOff) {
-      return EmptyState(
+      return const EmptyState(
         message: 'Bluetooth is off\nPlease enable Bluetooth to continue',
         icon: Icons.bluetooth_disabled,
       );
@@ -223,19 +291,22 @@ class BleScanScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'We need Bluetooth and location permissions to scan for nearby devices',
+                'We need Bluetooth and location permissions to scan for nearby devices.',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 15, color: Colors.grey[600], height: 1.5),
               ),
               const SizedBox(height: 32),
               FilledButton.icon(
-                onPressed: () => context.read<BleScanBloc>().requestPermissions(),
+                onPressed: () =>
+                    context.read<BleScanBloc>().requestPermissions(),
                 icon: const Icon(Icons.lock_open),
                 label: const Text('Grant Permissions'),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.blue[700],
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
               ),
             ],

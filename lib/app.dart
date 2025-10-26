@@ -1,3 +1,4 @@
+import 'package:ble_scanner/utils/constants.dart';
 import 'package:ble_scanner/utils/permission_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -110,7 +111,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 ? Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const CircularProgressIndicator(),
+                const CircularProgressIndicator(
+                  color: kPrimary,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   _statusMessage,
