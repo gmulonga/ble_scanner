@@ -163,7 +163,6 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           }
         },
         builder: (context, state) {
-          // ✅ Access the device info dynamically from the BLoC state
           final updatedDevice = state.devices.firstWhere(
                 (d) => d.id == widget.device.id,
             orElse: () => widget.device,
@@ -179,12 +178,12 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildHeader(signalColor),
-                const SizedBox(height: 16),
+                const SizedBox(height: 5),
                 _buildSignalCard(signalColor, signalStrength, signalPercentage, updatedDevice),
                 _buildInfoCard(context, updatedDevice),
                 _buildActions(context, isConnected),
                 if (isConnected) _buildServiceList(),
-                const SizedBox(height: 24),
+                const SizedBox(height: 5),
               ],
             ),
           );
@@ -222,27 +221,6 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.blue[600]!, Colors.blue[400]!],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: const Icon(Icons.bluetooth, color: Colors.white, size: 50),
-          ),
-          const SizedBox(height: 16),
           Text(
             widget.device.displayName,
             style: const TextStyle(
@@ -279,7 +257,6 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       ),
     );
   }
-
 
   Widget _buildSignalCard(Color signalColor, String signalStrength, double signalPercentage, BleDevice updatedDevice) {
     return _buildCard(
@@ -539,8 +516,8 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
   Widget _buildCard({required Widget child}) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
