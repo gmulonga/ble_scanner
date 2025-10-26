@@ -22,7 +22,7 @@ class DeviceDetailScreen extends StatefulWidget {
 class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   bool _isConnecting = false;
   bool _isLoadingServices = false;
-  List<String> _services = [];
+  List<BluetoothService> _services = [];
   BluetoothConnectionState? _connectionState;
   String? _lastSnackMessage;
   bool _hasRetried = false;
@@ -121,10 +121,10 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       final repo = context.read<BleScanBloc>().repository;
       final services = await repo.discoverServices(widget.device.id);
       setState(() {
-        _services = services.map((s) => s.uuid.toString()).toList();
+        _services = services;
       });
     } catch (e) {
-      CustomSnackBar.show(context, 'Failed to load services: $e', kRed);
+      // CustomSnackBar.show(context, 'Failed to load services: $e', kRed);
     } finally {
       setState(() => _isLoadingServices = false);
     }
@@ -183,7 +183,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 _buildSignalCard(signalColor, signalStrength, signalPercentage, updatedDevice),
                 _buildInfoCard(context, updatedDevice),
                 _buildActions(context, isConnected),
-                if (isConnected) _buildServiceList(context),
+                if (isConnected) _buildServiceList(),
                 const SizedBox(height: 24),
               ],
             ),
@@ -421,30 +421,119 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     );
   }
 
-  Widget _buildServiceList(BuildContext context) {
-    return _buildCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Discovered Services',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          if (_isLoadingServices)
-            const Center(child: CircularProgressIndicator(color: kPrimary,))
-          else if (_services.isEmpty)
-            const Text('No services found.')
-          else
-            Column(
-              children: _services
-                  .map((s) => ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(s, style: const TextStyle(fontSize: 14)),
-              ))
-                  .toList(),
+  String _getCharacteristicProperties(BluetoothCharacteristic c) {
+    final props = <String>[];
+
+    if (c.properties.read) props.add("Read");
+    if (c.properties.write) props.add("Write");
+    if (c.properties.writeWithoutResponse) props.add("WriteNoResp");
+    if (c.properties.notify) props.add("Notify");
+    if (c.properties.indicate) props.add("Indicate");
+    if (c.properties.authenticatedSignedWrites) props.add("SignedWrite");
+
+    return props.join(", ");
+  }
+
+  Widget _buildServiceList() {
+    if (_services.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
+              const SizedBox(height: 12),
+              Text(
+                "No services discovered yet",
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(12),
+      itemCount: _services.length,
+      itemBuilder: (context, index) {
+        final service = _services[index];
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+              childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.dns, color: Colors.blue[700], size: 20),
+              ),
+              title: Text(
+                service.uuid.str,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${service.characteristics.length} characteristics',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ),
+              children: service.characteristics.map((char) {
+                return Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.circle, size: 8, color: Colors.blue[700]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              char.uuid.str,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _getCharacteristicProperties(char),
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
             ),
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 
