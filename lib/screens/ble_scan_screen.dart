@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import '../blocs/ble_scan_bloc/ble_scan_bloc.dart';
 import '../blocs/ble_scan_bloc/ble_scan_state.dart';
 import '../utils/constants.dart';
+import '../widgets/custom_snackbar.dart';
 import '../widgets/device_list_tile.dart';
 import '../widgets/app_loader.dart';
 import '../widgets/empty_state.dart';
@@ -80,12 +81,7 @@ class BleScanScreen extends StatelessWidget {
 
     final hasPermissions = await PermissionHelper.requestBluetoothPermissions();
     if (!hasPermissions) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Bluetooth and Location permissions are required.'),
-          backgroundColor: kPrimary,
-        ),
-      );
+      CustomSnackBar.show(context, 'Bluetooth and Location permissions are required.', kPrimary);
       return;
     }
 
