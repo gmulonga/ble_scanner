@@ -25,9 +25,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
   List<String> _services = [];
   BluetoothConnectionState? _connectionState;
   String? _lastSnackMessage;
+  bool _hasRetried = false;
 
   StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
-
 
   void _startConnectionListener() {
     final repo = context.read<BleScanBloc>().repository;
@@ -35,9 +35,8 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     if (stream == null) return;
 
     _connectionSubscription?.cancel();
-    _connectionSubscription = stream.listen((state) {
+    _connectionSubscription = stream.listen((state) async {
       if (!mounted) return;
-
       setState(() => _connectionState = state);
 
       void showOnce(String msg, Color color) {
@@ -49,6 +48,7 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
 
       switch (state) {
         case BluetoothConnectionState.connected:
+          _hasRetried = false;
           showOnce('Device connected', Colors.green);
           break;
         case BluetoothConnectionState.connecting:
@@ -59,9 +59,33 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           break;
         case BluetoothConnectionState.disconnected:
           showOnce('Device disconnected', Colors.red);
+          if (!_hasRetried) {
+            _hasRetried = true;
+            _attemptReconnection();
+          }
           break;
       }
     });
+  }
+
+  Future<void> _attemptReconnection() async {
+    final repo = context.read<BleScanBloc>().repository;
+
+    for (int i = 1; i <= 2; i++) {
+      if (!mounted) return;
+
+      CustomSnackBar.show(context, 'Reconnecting ...', Colors.orange);
+
+      try {
+        await repo.connectToDevice(widget.device.id);
+        _discoverServices(context);
+        return;
+      } catch (_) {
+        await Future.delayed(const Duration(seconds: 4));
+      }
+    }
+
+    CustomSnackBar.show(context, 'Failed to reconnect after 2 attempts', Colors.redAccent);
   }
 
   Color _getSignalColor(int rssi) {
@@ -388,19 +412,9 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           if (isConnected)
             _buildActionButton(
               icon: Icons.refresh,
-              label: 'Refresh Signal',
+              label: 'Reconnect',
               color: Colors.green,
-              onPressed: () async {
-                try {
-                  final bloc = context.read<BleScanBloc>();
-                  await bloc.refreshRssi(widget.device.id);
-                  CustomSnackBar.show(
-                      context, 'Signal refreshed successfully', kPrimary);
-                } catch (e) {
-                  CustomSnackBar.show(
-                      context, 'Failed to refresh signal: $e', kRed);
-                }
-              },
+              onPressed: _attemptReconnection,
             ),
         ],
       ),
